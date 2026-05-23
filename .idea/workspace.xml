@@ -4,13 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="c4dc9d51-c515-4cd7-95bc-96f104443186" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/backend/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/app/builder/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/app/builder/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/MockChatWidget.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/MockChatWidget.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/NodeAddMenu.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/NodeAddMenu.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/store/agentStore.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/store/agentStore.ts" afterDir="false" />
-    </list>
+    <list default="true" id="c4dc9d51-c515-4cd7-95bc-96f104443186" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
