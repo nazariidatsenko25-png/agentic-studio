@@ -7,7 +7,7 @@ export function GuardrailNode({ id, data }: { id: string, data: any }) {
   const updateNodeData = useStore((state) => state.updateNodeData);
 
   return (
-    <div className="relative bg-[var(--bg-card)] shadow-lg rounded-xl border border-[var(--border)] overflow-visible min-w-[280px] transition-all hover:border-[var(--node-guardrail)] hover:shadow-[0_0_24px_var(--node-guardrail-glow)] group/node">
+    <div className="relative bg-[var(--bg-card)] shadow-lg rounded-xl border border-[var(--border)] overflow-visible min-w-[280px] transition-all duration-300 hover:border-[var(--node-guardrail)] hover:shadow-[0_0_24px_var(--node-guardrail-glow)] group/node animate-scale-in">
       <Handle
         type="target"
         position={Position.Top}

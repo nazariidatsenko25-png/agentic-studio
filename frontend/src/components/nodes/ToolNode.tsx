@@ -9,7 +9,7 @@ export function ToolNode({ id, data }: { id: string; data: any }) {
 
   return (
     <div
-      className="relative bg-[var(--bg-card)] shadow-lg rounded-xl border overflow-visible min-w-[240px] transition-all group/node"
+      className="relative bg-[var(--bg-card)] shadow-lg rounded-xl border overflow-visible min-w-[240px] transition-all duration-300 group/node animate-scale-in"
       style={{
         borderColor: isEnabled ? 'var(--node-tool)' : 'var(--border)',
         boxShadow: isEnabled ? '0 0 24px var(--node-tool-glow)' : 'none',

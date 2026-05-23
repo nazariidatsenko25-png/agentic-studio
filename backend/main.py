@@ -138,6 +138,43 @@ async def delete_agent(agent_id: str):
     return {"status": "deleted", "agent_id": agent_id}
 
 
+@app.get("/api/agents/{agent_id}")
+async def get_agent(agent_id: str):
+    """Get a single agent by ID with full config."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase client not initialized")
+    
+    response = supabase.table("agents").select("*").eq("id", agent_id).execute()
+    if not response.data:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    return {"agent": response.data[0]}
+
+
+@app.put("/api/agents/{agent_id}")
+async def update_agent(agent_id: str, config: AgentConfig):
+    """Update an existing agent's configuration."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase client not initialized")
+    
+    response = supabase.table("agents").update({
+        "name": config.name,
+        "system_prompt": config.system_prompt,
+        "tools": config.tools,
+        "max_iterations": config.max_iterations,
+        "knowledge_sources": [ks.dict() for ks in (config.knowledge_sources or [])],
+        "output_format": config.output_format.dict() if config.output_format else None,
+        "api_integrations": [ai.dict() for ai in (config.api_integrations or [])],
+        "memory_config": config.memory_config.dict() if config.memory_config else None,
+        "conditions": [c.dict() for c in (config.conditions or [])],
+    }).eq("id", agent_id).execute()
+    
+    if not response.data:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    return {"agent_id": agent_id, "status": "updated"}
+
+
 @app.get("/api/agents/{agent_id}/stats")
 async def agent_stats(agent_id: str):
     """Get analytics for a specific agent: conversations, messages, tool usage."""

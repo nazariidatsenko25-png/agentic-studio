@@ -30,10 +30,8 @@ def is_demo_mode() -> bool:
     return os.getenv("DEMO_MODE", "").strip() in ("1", "true", "yes")
 
 def should_use_demo(user_message: str) -> bool:
-    """Check if the user message triggers demo mode."""
-    if is_demo_mode():
-        return True
-    return user_message.strip().lower().startswith(DEMO_TRIGGER)
+    """Check if demo mode is enabled via DEMO_MODE env variable."""
+    return is_demo_mode()
 
 
 # ═══════════════════════════════════════════════════

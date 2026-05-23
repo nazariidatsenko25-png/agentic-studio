@@ -8,7 +8,7 @@ export function KnowledgeNode({ id, data }: { id: string; data: any }) {
 
   return (
     <div
-      className="relative bg-[var(--bg-card)] shadow-lg rounded-xl border border-[var(--border)] overflow-visible min-w-[320px] transition-all hover:border-[var(--node-knowledge)] hover:shadow-[0_0_24px_var(--node-knowledge-glow)] group/node"
+      className="relative bg-[var(--bg-card)] shadow-lg rounded-xl border border-[var(--border)] overflow-visible min-w-[320px] transition-all duration-300 hover:border-[var(--node-knowledge)] hover:shadow-[0_0_24px_var(--node-knowledge-glow)] group/node animate-scale-in"
     >
       <Handle
         type="target"

@@ -41,8 +41,38 @@ After results: "THINK: I found several sources. According to the most recent dat
 MAX_RETRIES = 3
 
 
+def _get_function_calls(response):
+    """Extract function calls from a GenerateContentResponse (SDK v0.3.0 compat)."""
+    try:
+        parts = response.candidates[0].content.parts
+        return [p.function_call for p in parts if p.function_call is not None]
+    except (IndexError, AttributeError):
+        return []
+
+
+def _get_text(response):
+    """Extract concatenated text from a GenerateContentResponse (SDK v0.3.0 compat)."""
+    try:
+        parts = response.candidates[0].content.parts
+        texts = [p.text for p in parts if p.text]
+        return "\n".join(texts) if texts else ""
+    except (IndexError, AttributeError):
+        return ""
+
+
 def get_client():
-    api_key = os.getenv("GEMINI_API_KEY")
+    # Re-read .env each time so key changes are picked up without restart
+    from pathlib import Path
+    from dotenv import dotenv_values
+    env_path = Path(__file__).parent.parent / ".env"
+    if env_path.exists():
+        env_vals = dotenv_values(env_path)
+        api_key = env_vals.get("GEMINI_API_KEY", "").strip()
+    else:
+        api_key = ""
+    # Fallback to process env
+    if not api_key:
+        api_key = os.getenv("GEMINI_API_KEY", "")
     if not api_key:
         raise ValueError("GEMINI_API_KEY is not set.")
     return genai.Client(api_key=api_key)
@@ -52,37 +82,47 @@ def extract_thoughts(text: str) -> tuple[list[str], str]:
     """
     Extract THINK: blocks from model text.
     Returns (list_of_thoughts, remaining_text_without_thinks).
+    
+    Handles cases where THINK: and response are on the same line or
+    consecutive lines without a blank separator.
     """
+    # Use regex to find all THINK: blocks (greedy up to next THINK: or end-of-think markers)
+    think_pattern = re.compile(
+        r'THINK:\s*(.*?)(?=\n\s*(?:ACTION:|OBSERVE:|RESPOND:|THINK:)|\n\s*\n|$)',
+        re.IGNORECASE | re.DOTALL
+    )
+    
     thoughts = []
-    remaining_lines = []
+    for match in think_pattern.finditer(text):
+        thought = match.group(1).strip()
+        if thought:
+            thoughts.append(thought)
     
+    # Remove all THINK: blocks from the text to get the remaining response
+    remaining = think_pattern.sub('', text).strip()
+    
+    # Clean up any leftover empty lines
+    remaining = re.sub(r'\n{3,}', '\n\n', remaining)
+    
+    return thoughts, remaining
+
+
+def strip_thinks(text: str) -> str:
+    """Safety-net: remove any THINK: prefixed content from final user-facing text."""
+    # Remove lines that start with THINK:
     lines = text.split('\n')
-    current_think = None
-    
+    cleaned = []
+    skip = False
     for line in lines:
         stripped = line.strip()
         if stripped.upper().startswith('THINK:'):
-            if current_think is not None:
-                thoughts.append(current_think.strip())
-            current_think = stripped[6:].strip()
-        elif current_think is not None:
-            # Continue multi-line think block
-            if stripped == '' or stripped.upper().startswith(('ACTION:', 'OBSERVE:', 'RESPOND:')):
-                thoughts.append(current_think.strip())
-                current_think = None
-                if stripped and not stripped.upper().startswith('THINK:'):
-                    remaining_lines.append(line)
-            else:
-                current_think += ' ' + stripped
-        else:
-            remaining_lines.append(line)
-    
-    # Flush last think block
-    if current_think is not None:
-        thoughts.append(current_think.strip())
-    
-    remaining = '\n'.join(remaining_lines).strip()
-    return thoughts, remaining
+            skip = True
+            continue
+        if skip and stripped == '':
+            continue  # Skip blank lines right after THINK blocks
+        skip = False
+        cleaned.append(line)
+    return '\n'.join(cleaned).strip()
 
 
 def parse_retry_delay(error_msg: str) -> int:
@@ -118,39 +158,7 @@ def format_api_error(error_msg: str) -> str:
     return f"Помилка API: {error_msg[:200]}"
 
 
-async def call_model_with_retry(chat, message, max_retries=MAX_RETRIES):
-    """
-    Send a message to the model with retry logic for rate limits.
-    Yields status events during waits. Returns (response, status_events).
-    """
-    status_events = []
-    last_error = None
-    
-    for attempt in range(max_retries):
-        try:
-            response = chat.send_message(message)
-            return response, status_events
-        except Exception as e:
-            error_msg = str(e)
-            last_error = e
-            
-            is_rate_limit = "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg
-            
-            if is_rate_limit and attempt < max_retries - 1:
-                # Check if it's a hard zero limit (daily exhausted)
-                if "limit: 0" in error_msg:
-                    raise  # No point retrying — daily quota is gone
-                    
-                delay = parse_retry_delay(error_msg)
-                status_events.append({
-                    'type': 'status', 
-                    'content': f'⏳ Rate limit — очікування {delay}с (спроба {attempt + 2}/{max_retries})...'
-                })
-                await asyncio.sleep(delay)
-            else:
-                raise
-    
-    raise last_error
+
 
 
 async def execute_agent(
@@ -176,7 +184,7 @@ async def execute_agent(
         yield f"data: {json.dumps({'type': 'message', 'content': f'Помилка ініціалізації: {str(e)}'})}\n\n"
         return
 
-    model = "gemini-2.0-flash"
+    model = "gemini-2.5-flash"
     
     # Combine ReAct prefix with user's custom system prompt
     full_system_prompt = REACT_SYSTEM_PREFIX
@@ -268,6 +276,7 @@ async def execute_agent(
         system_instruction=full_system_prompt,
         temperature=0.7,
         tools=tool_funcs if tool_funcs else None,
+        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
     )
     
     # Status: connecting
@@ -305,27 +314,54 @@ async def execute_agent(
         message_to_send = messages.pop() if messages else ""
         
         try:
-            response, status_events = await call_model_with_retry(chat, message_to_send)
-            # Emit any retry status events
-            for evt in status_events:
-                yield f"data: {json.dumps(evt)}\n\n"
+            response = None
+            last_error = None
+            for attempt in range(MAX_RETRIES):
+                try:
+                    response = chat.send_message(message_to_send)
+                    break
+                except Exception as e:
+                    error_msg = str(e)
+                    last_error = e
+                    
+                    is_rate_limit = "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg
+                    if is_rate_limit and attempt < MAX_RETRIES - 1:
+                        if "limit: 0" in error_msg:
+                            raise
+                        delay = parse_retry_delay(error_msg)
+                        yield f"data: {json.dumps({'type': 'status', 'content': f'⏳ Rate limit — очікування {delay}с (спроба {attempt + 2}/{MAX_RETRIES})...'})}\n\n"
+                        await asyncio.sleep(delay)
+                    else:
+                        raise
+            if response is None:
+                raise last_error
         except Exception as e:
             friendly_msg = format_api_error(str(e))
             yield f"data: {json.dumps({'type': 'message', 'content': friendly_msg})}\n\n"
             break
             
+        # --- Extract function calls and text using SDK-compatible helpers ---
+        func_calls = _get_function_calls(response)
+        response_text = _get_text(response)
+        
+        # Handle empty responses
+        if not func_calls and not response_text:
+            yield f"data: {json.dumps({'type': 'message', 'content': 'API Error: Model returned an empty response. This may be due to safety filters.'})}\n\n"
+            break
+        
         # --- Process tool calls ---
-        if response.function_calls:
+        if func_calls:
             # If there's also text with THINK: blocks, extract and emit them first
-            if response.text:
-                thoughts, _ = extract_thoughts(response.text)
+            if response_text:
+                thoughts, _ = extract_thoughts(response_text)
                 for thought in thoughts:
                     if thought:
                         yield f"data: {json.dumps({'type': 'thought', 'content': thought})}\n\n"
             
-            for function_call in response.function_calls:
-                tool_name = function_call.name
-                tool_args = function_call.args
+            parts = []
+            for fc in func_calls:
+                tool_name = fc.name
+                tool_args = dict(fc.args) if fc.args else {}
                 
                 # Phase: Acting
                 yield f"data: {json.dumps({'type': 'phase', 'phase': 'acting', 'iteration': i + 1, 'tool': tool_name})}\n\n"
@@ -350,13 +386,16 @@ async def execute_agent(
                 yield f"data: {json.dumps({'type': 'observation', 'content': obs_preview})}\n\n"
                 yield f"data: {json.dumps({'type': 'status', 'content': f'✓ {tool_name} завершено за {tool_elapsed:.1f}s'})}\n\n"
                 
-                # Send tool result back to model
-                messages.append(
+                # Collect tool result
+                parts.append(
                     types.Part.from_function_response(
                         name=tool_name,
                         response={"result": result}
                     )
                 )
+            
+            # Send all tool results back to model together
+            messages.append(parts)
             
             # Emit iteration end
             iter_elapsed = time.time() - iter_start
@@ -364,8 +403,8 @@ async def execute_agent(
             continue  # Next iteration to process tool results
             
         # --- Process text response ---
-        elif response.text:
-            thoughts, remaining = extract_thoughts(response.text)
+        elif response_text:
+            thoughts, remaining = extract_thoughts(response_text)
             
             # Emit each thought as a separate SSE event
             for thought in thoughts:
@@ -376,7 +415,9 @@ async def execute_agent(
             yield f"data: {json.dumps({'type': 'phase', 'phase': 'responding', 'iteration': i + 1})}\n\n"
             
             # Emit the final message (text without THINK: blocks)
-            final_text = remaining if remaining else response.text
+            final_text = remaining if remaining else response_text
+            # Safety net: strip any remaining THINK: content
+            final_text = strip_thinks(final_text)
             if final_text.strip():
                 total_elapsed = time.time() - total_start
                 yield f"data: {json.dumps({'type': 'message', 'content': final_text})}\n\n"

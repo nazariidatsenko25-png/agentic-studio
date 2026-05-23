@@ -176,6 +176,7 @@ export type WorkflowConfig = {
 type RFState = {
   nodes: Node[];
   edges: Edge[];
+  editingAgentId: string | null;
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
   onConnect: OnConnect;
@@ -186,6 +187,8 @@ type RFState = {
   getAgentConfig: () => AgentConfig;
   getWorkflowConfig: () => WorkflowConfig;
   loadTemplate: (templateId: string) => void;
+  loadAgentFromAPI: (agentId: string) => Promise<void>;
+  clearCanvas: () => void;
 };
 
 // ─── AGENT TEMPLATES ───
@@ -291,6 +294,7 @@ const initialEdges: Edge[] = [];
 export const useStore = create<RFState>((set, get) => ({
   nodes: initialNodes,
   edges: initialEdges,
+  editingAgentId: null,
 
   onNodesChange: (changes: NodeChange[]) => {
     set({
@@ -380,7 +384,152 @@ export const useStore = create<RFState>((set, get) => ({
     set({
       nodes: template.nodes.map((n) => ({ ...n })),
       edges: template.edges.map((e) => ({ ...e })),
+      editingAgentId: null,
     });
+  },
+
+  clearCanvas: () => {
+    nodeIdCounter = 10;
+    set({
+      nodes: initialNodes,
+      edges: initialEdges,
+      editingAgentId: null,
+    });
+  },
+
+  loadAgentFromAPI: async (agentId: string) => {
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/agents/${agentId}`);
+      if (!res.ok) throw new Error('Failed to fetch agent');
+      const data = await res.json();
+      const agent = data.agent;
+
+      nodeIdCounter = 200; // Start from high number to avoid collisions
+      const newNodes: Node[] = [];
+      const newEdges: Edge[] = [];
+
+      // 1. Prompt node (always present)
+      const promptId = `prompt-${++nodeIdCounter}`;
+      newNodes.push({
+        id: promptId,
+        type: 'prompt',
+        position: { x: 350, y: 40 },
+        data: { system_prompt: agent.system_prompt || '' },
+      });
+
+      let childIndex = 0;
+      const xStart = 50;
+      const xSpacing = 300;
+      const yChild = 260;
+
+      // 2. Tool nodes
+      const tools: string[] = agent.tools || [];
+      for (const toolId of tools) {
+        const catalogItem = NODE_CATALOG.find(
+          (c) => c.type === 'tool' && c.defaultData.tool_id === toolId
+        );
+        const nodeId = `tool-${++nodeIdCounter}`;
+        newNodes.push({
+          id: nodeId,
+          type: 'tool',
+          position: { x: xStart + childIndex * xSpacing, y: yChild },
+          data: catalogItem
+            ? { ...catalogItem.defaultData }
+            : { tool_id: toolId, tool_name: toolId, tool_description: '', tool_icon: '🛠', enabled: true },
+        });
+        newEdges.push({ id: `e-${promptId}-${nodeId}`, source: promptId, target: nodeId });
+        childIndex++;
+      }
+
+      // 3. Guardrail node (max_iterations)
+      if (agent.max_iterations && agent.max_iterations !== 5) {
+        const nodeId = `guardrail-${++nodeIdCounter}`;
+        newNodes.push({
+          id: nodeId,
+          type: 'guardrail',
+          position: { x: xStart + childIndex * xSpacing, y: yChild },
+          data: { max_iterations: agent.max_iterations },
+        });
+        newEdges.push({ id: `e-${promptId}-${nodeId}`, source: promptId, target: nodeId });
+        childIndex++;
+      }
+
+      // 4. Knowledge nodes
+      const knowledgeSources = agent.knowledge_sources || [];
+      for (const ks of knowledgeSources) {
+        const nodeId = `knowledge-${++nodeIdCounter}`;
+        newNodes.push({
+          id: nodeId,
+          type: 'knowledge',
+          position: { x: xStart + childIndex * xSpacing, y: yChild },
+          data: { source_type: ks.source_type || 'url', source_value: ks.source_value || '', chunk_size: 500 },
+        });
+        newEdges.push({ id: `e-${promptId}-${nodeId}`, source: promptId, target: nodeId });
+        childIndex++;
+      }
+
+      // 5. Output format node
+      if (agent.output_format) {
+        const nodeId = `output_format-${++nodeIdCounter}`;
+        newNodes.push({
+          id: nodeId,
+          type: 'output_format',
+          position: { x: xStart + childIndex * xSpacing, y: yChild },
+          data: { format: agent.output_format.format || 'markdown', schema: agent.output_format.schema || '' },
+        });
+        newEdges.push({ id: `e-${promptId}-${nodeId}`, source: promptId, target: nodeId });
+        childIndex++;
+      }
+
+      // 6. API integration nodes
+      const apiIntegrations = agent.api_integrations || [];
+      for (const api of apiIntegrations) {
+        const nodeId = `api-${++nodeIdCounter}`;
+        newNodes.push({
+          id: nodeId,
+          type: 'api',
+          position: { x: xStart + childIndex * xSpacing, y: yChild },
+          data: { method: api.method || 'GET', url: api.url || '', headers: api.headers || '', body: api.body || '' },
+        });
+        newEdges.push({ id: `e-${promptId}-${nodeId}`, source: promptId, target: nodeId });
+        childIndex++;
+      }
+
+      // 7. Memory node
+      if (agent.memory_config) {
+        const nodeId = `memory-${++nodeIdCounter}`;
+        newNodes.push({
+          id: nodeId,
+          type: 'memory',
+          position: { x: xStart + childIndex * xSpacing, y: yChild },
+          data: { memory_type: agent.memory_config.memory_type || 'session', ttl_minutes: agent.memory_config.ttl_minutes || 60 },
+        });
+        newEdges.push({ id: `e-${promptId}-${nodeId}`, source: promptId, target: nodeId });
+        childIndex++;
+      }
+
+      // 8. Condition nodes
+      const conditions = agent.conditions || [];
+      for (const cond of conditions) {
+        const nodeId = `condition-${++nodeIdCounter}`;
+        newNodes.push({
+          id: nodeId,
+          type: 'condition',
+          position: { x: xStart + childIndex * xSpacing, y: yChild },
+          data: { expression: cond.expression || '', true_label: 'True', false_label: 'False' },
+        });
+        newEdges.push({ id: `e-${promptId}-${nodeId}`, source: promptId, target: nodeId });
+        childIndex++;
+      }
+
+      set({
+        nodes: newNodes,
+        edges: newEdges,
+        editingAgentId: agentId,
+      });
+    } catch (err) {
+      console.error('Failed to load agent:', err);
+    }
   },
 
   getAgentConfig: () => {

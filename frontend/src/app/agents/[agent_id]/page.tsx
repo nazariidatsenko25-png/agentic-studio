@@ -98,7 +98,7 @@ export default function AgentDetailPage({ params }: { params: { agent_id: string
               <p className="text-[10px] text-[var(--text-tertiary)] font-mono-brand">{agent.id.slice(0, 12)}...</p>
             </div>
           </div>
-          <a href="/builder" className="px-4 py-2 border border-[var(--border)] text-[var(--text-secondary)] rounded-lg text-sm font-medium hover:border-[var(--text-tertiary)] transition-colors">
+          <a href={`/builder?agent_id=${agent.id}`} className="px-4 py-2 border border-[var(--border)] text-[var(--text-secondary)] rounded-lg text-sm font-medium hover:border-[var(--accent)] hover:text-[var(--accent)] btn-press transition-all">
             Edit Agent
           </a>
         </div>

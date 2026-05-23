@@ -113,13 +113,13 @@ export function NodeSidebar() {
 
               {/* Items */}
               {!isCollapsed && (
-                <div className="flex flex-col gap-1 mt-0.5">
+                <div className="flex flex-col gap-1 mt-0.5 animate-fade-in" style={{ animationDuration: '0.3s' }}>
                   {items.map((item) => (
                     <div
                       key={`${item.type}-${item.label}`}
                       draggable
                       onDragStart={(e) => onDragStart(e, item)}
-                      className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg cursor-grab active:cursor-grabbing border border-transparent hover:border-[var(--border-light)] transition-all group"
+                      className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg cursor-grab active:cursor-grabbing active:scale-[0.97] active:opacity-80 border border-transparent hover:border-[var(--border-light)] transition-all duration-200 group"
                       style={{
                         background: 'transparent',
                       }}

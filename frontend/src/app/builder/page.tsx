@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useMemo, useState, useRef, DragEvent, MouseEvent } from 'react';
+import { useCallback, useMemo, useState, useRef, useEffect, DragEvent, MouseEvent } from 'react';
+import { useSearchParams } from 'next/navigation';
 import ReactFlow, { Background, Controls, MiniMap, ReactFlowInstance } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useStore, AGENT_TEMPLATES } from '@/store/agentStore';
@@ -16,7 +17,8 @@ import { NodeSidebar } from '@/components/NodeSidebar';
 import MockChatWidget from '@/components/MockChatWidget';
 
 export default function BuilderPage() {
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, getAgentConfig, addNode, removeNode, loadTemplate } = useStore();
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, getAgentConfig, addNode, removeNode, loadTemplate, loadAgentFromAPI, editingAgentId } = useStore();
+  const searchParams = useSearchParams();
   const [isDeploying, setIsDeploying] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [generatedScript, setGeneratedScript] = useState('');
@@ -26,6 +28,27 @@ export default function BuilderPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [isLoadingAgent, setIsLoadingAgent] = useState(false);
+  const [loadedAgentName, setLoadedAgentName] = useState('');
+
+  // Load agent from URL param on mount
+  useEffect(() => {
+    const agentId = searchParams.get('agent_id');
+    if (agentId) {
+      setIsLoadingAgent(true);
+      // Fetch agent name first, then load canvas
+      fetch(`http://127.0.0.1:8000/api/agents/${agentId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.agent) {
+            setAgentName(data.agent.name || '');
+            setLoadedAgentName(data.agent.name || '');
+          }
+        })
+        .catch(() => {});
+      loadAgentFromAPI(agentId).finally(() => setIsLoadingAgent(false));
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
@@ -101,8 +124,17 @@ export default function BuilderPage() {
     const config = getAgentConfig();
     setIsDeploying(true);
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/agents', {
-        method: 'POST',
+      let url = 'http://127.0.0.1:8000/api/agents';
+      let method = 'POST';
+
+      // If editing an existing agent, update instead of create
+      if (editingAgentId) {
+        url = `http://127.0.0.1:8000/api/agents/${editingAgentId}`;
+        method = 'PUT';
+      }
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: agentName || 'Unnamed Agent',
@@ -115,8 +147,9 @@ export default function BuilderPage() {
       }
       
       const data = await res.json();
-      setDeployedAgentId(data.agent_id);
-      setGeneratedScript(`<script src="http://localhost:3000/embed.js" data-agent="${data.agent_id}" defer></script>`);
+      const resultId = data.agent_id || editingAgentId;
+      setDeployedAgentId(resultId);
+      setGeneratedScript(`<script src="http://localhost:3000/embed.js" data-agent="${resultId}" defer></script>`);
       setShowSuccessModal(true);
     } catch (e) {
       console.error(e);
@@ -176,12 +209,12 @@ export default function BuilderPage() {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
             Test Agent
           </button>
-          <button 
+            <button 
             onClick={handleDeploy}
             disabled={isDeploying}
-            className="px-5 py-2 bg-[var(--accent)] hover:brightness-110 disabled:opacity-50 text-[var(--text-inverse)] rounded-lg text-sm font-semibold transition-all hover:shadow-[0_0_24px_var(--accent-glow-strong)] flex items-center gap-2"
+            className="px-5 py-2 bg-[var(--accent)] hover:brightness-110 disabled:opacity-50 text-[var(--text-inverse)] rounded-lg text-sm font-semibold btn-press hover:shadow-[0_0_24px_var(--accent-glow-strong)] flex items-center gap-2 animate-glow-pulse"
           >
-            {isDeploying ? 'Deploying...' : 'Save & Deploy →'}
+            {isDeploying ? 'Deploying...' : editingAgentId ? 'Update & Deploy →' : 'Save & Deploy →'}
           </button>
         </div>
       </header>
@@ -190,6 +223,16 @@ export default function BuilderPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
         <NodeSidebar />
+
+        {/* Loading overlay */}
+        {isLoadingAgent && (
+          <div className="absolute inset-0 z-30 bg-[var(--bg-primary)]/80 backdrop-blur-sm flex items-center justify-center">
+            <div className="text-center animate-fade-in">
+              <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+              <p className="text-sm text-[var(--text-tertiary)]">Завантаження агента...</p>
+            </div>
+          </div>
+        )}
 
         {/* Canvas */}
         <div className="flex-1 h-full relative" ref={reactFlowWrapper}>
@@ -250,7 +293,7 @@ export default function BuilderPage() {
 
         {/* Preview Chat Panel */}
         {showPreview && (
-          <div className="w-[380px] h-full border-l border-[var(--border)] bg-[var(--bg-primary)] animate-slide-in-right overflow-hidden">
+          <div className="w-[380px] h-full border-l border-[var(--border)] bg-[var(--bg-primary)] animate-slide-in-spring overflow-hidden">
             <MockChatWidget inline />
           </div>
         )}
@@ -259,7 +302,7 @@ export default function BuilderPage() {
       {/* Deploy Success Modal */}
       {showSuccessModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-fade-in-up">
+          <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-scale-in">
             {/* Modal header */}
             <div className="border-b border-[var(--border)] px-6 py-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -321,7 +364,7 @@ export default function BuilderPage() {
       {/* Templates Modal */}
       {showTemplates && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4" onClick={() => setShowTemplates(false)}>
-          <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-fade-in-up" onClick={e => e.stopPropagation()}>
+          <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-scale-in" onClick={e => e.stopPropagation()}>
             <div className="border-b border-[var(--border)] px-6 py-4 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-[var(--text-primary)]">Agent Templates</h2>
@@ -330,11 +373,12 @@ export default function BuilderPage() {
               <button onClick={() => setShowTemplates(false)} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors">✕</button>
             </div>
             <div className="p-6 grid grid-cols-2 gap-4">
-              {AGENT_TEMPLATES.map((tpl) => (
+              {AGENT_TEMPLATES.map((tpl, idx) => (
                 <button
                   key={tpl.id}
                   onClick={() => { loadTemplate(tpl.id); setShowTemplates(false); setAgentName(tpl.name); }}
-                  className="group text-left p-5 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] hover:border-[var(--accent)]/50 hover:shadow-[0_8px_30px_var(--accent-glow)] hover:-translate-y-0.5 transition-all duration-300"
+                  className="group text-left p-5 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] hover:border-[var(--accent)]/50 hover:shadow-[0_8px_30px_var(--accent-glow)] hover-lift btn-press animate-scale-in"
+                  style={{ animationDelay: `${0.05 * idx}s` }}
                 >
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style={{ background: `color-mix(in srgb, ${tpl.color} 15%, transparent)` }}>

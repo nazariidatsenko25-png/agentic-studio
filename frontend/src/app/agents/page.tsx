@@ -217,8 +217,8 @@ export default function AgentsPage() {
           </div>
         ) : (
           <div className="grid gap-4">
-            {agents.map(agent => (
-              <div key={agent.id} className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-5 hover:border-[var(--accent)]/50 hover:shadow-[0_8px_30px_var(--accent-glow)] hover:-translate-y-0.5 transition-all duration-300 group cursor-default">
+              {agents.map((agent, idx) => (
+              <div key={agent.id} className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-5 hover:border-[var(--accent)]/50 hover:shadow-[0_8px_30px_var(--accent-glow)] hover-lift group cursor-default animate-slide-up" style={{ animationDelay: `${idx * 0.08}s` }}>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-2">
@@ -252,6 +252,12 @@ export default function AgentsPage() {
                     >
                       📊 Stats
                     </a>
+                    <a
+                      href={`/builder?agent_id=${agent.id}`}
+                      className="px-3 py-1.5 border border-[var(--border)] text-[var(--text-secondary)] rounded-lg text-xs font-medium hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
+                    >
+                      ✏️ Edit
+                    </a>
                     <button
                       onClick={() => setEmbedModal(agent.id)}
                       className="px-3 py-1.5 border border-[var(--border)] text-[var(--text-secondary)] rounded-lg text-xs font-medium hover:border-[var(--text-tertiary)] transition-colors"
@@ -260,7 +266,7 @@ export default function AgentsPage() {
                     </button>
                     <button
                       onClick={() => setDeleteConfirmId(agent.id)}
-                      className="px-3 py-1.5 border border-[var(--error)]/30 text-[var(--error)] rounded-lg text-xs font-medium hover:bg-[var(--error)] hover:text-white hover:border-[var(--error)] transition-all"
+                      className="px-3 py-1.5 border border-[var(--error)]/30 text-[var(--error)] rounded-lg text-xs font-medium hover:bg-[var(--error)] hover:text-white hover:border-[var(--error)] transition-all hover-shake"
                     >
                       Delete
                     </button>
@@ -275,7 +281,7 @@ export default function AgentsPage() {
       {/* Embed & API Modal */}
       {embedModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4" onClick={() => { setEmbedModal(null); setEmbedTab('widget'); setEmbedCopied(false); }}>
-          <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl w-full max-w-lg overflow-hidden animate-fade-in-up" onClick={e => e.stopPropagation()}>
+          <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl w-full max-w-lg overflow-hidden animate-scale-in" onClick={e => e.stopPropagation()}>
             <div className="border-b border-[var(--border)] px-5 py-3 flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <button
@@ -353,7 +359,7 @@ data: {"type": "done"}`}</pre>
       {/* Delete Modal */}
       {deleteConfirmId && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4" onClick={() => setDeleteConfirmId(null)}>
-          <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl w-full max-w-sm overflow-hidden animate-fade-in-up" onClick={e => e.stopPropagation()}>
+          <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl w-full max-w-sm overflow-hidden animate-scale-in" onClick={e => e.stopPropagation()}>
             <div className="p-6 text-center">
               <h2 className="font-semibold text-lg mb-2">Видалити агента?</h2>
               <p className="text-sm text-[var(--text-secondary)] mb-6">Цю дію неможливо скасувати. Агент буде видалений назавжди.</p>
@@ -378,7 +384,7 @@ data: {"type": "done"}`}</pre>
 
       {/* Chat Panel (slides in from right) */}
       {chatAgentId && (
-        <div className="fixed inset-y-0 right-0 w-[420px] max-w-full bg-[var(--bg-secondary)] border-l border-[var(--border)] z-40 flex flex-col animate-slide-in-right shadow-2xl shadow-black/40">
+        <div className="fixed inset-y-0 right-0 w-[420px] max-w-full bg-[var(--bg-secondary)] border-l border-[var(--border)] z-40 flex flex-col animate-slide-in-spring shadow-2xl shadow-black/40">
           {/* Chat header */}
           <div className="border-b border-[var(--border)] px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -421,15 +427,15 @@ data: {"type": "done"}`}</pre>
                   <div className="grid grid-cols-3 gap-2 mb-3">
                     <div className="bg-[var(--bg-secondary)] rounded-lg p-2.5 border border-[var(--border)]">
                       <p className="text-[10px] text-[var(--text-tertiary)] font-mono-brand uppercase">Розмови</p>
-                      <p className="text-lg font-bold text-[var(--text-primary)]">{chatStats.stats.total_conversations}</p>
+                      <p className="text-lg font-bold text-[var(--text-primary)] tabular-nums animate-count-up">{chatStats.stats.total_conversations}</p>
                     </div>
                     <div className="bg-[var(--bg-secondary)] rounded-lg p-2.5 border border-[var(--border)]">
                       <p className="text-[10px] text-[var(--text-tertiary)] font-mono-brand uppercase">Повідом.</p>
-                      <p className="text-lg font-bold text-[var(--text-primary)]">{chatStats.stats.total_messages}</p>
+                      <p className="text-lg font-bold text-[var(--text-primary)] tabular-nums animate-count-up" style={{ animationDelay: '0.1s' }}>{chatStats.stats.total_messages}</p>
                     </div>
                     <div className="bg-[var(--bg-secondary)] rounded-lg p-2.5 border border-[var(--border)]">
                       <p className="text-[10px] text-[var(--text-tertiary)] font-mono-brand uppercase">Серед.</p>
-                      <p className="text-lg font-bold text-[var(--text-primary)]">{chatStats.stats.avg_messages_per_conversation}</p>
+                      <p className="text-lg font-bold text-[var(--text-primary)] tabular-nums animate-count-up" style={{ animationDelay: '0.2s' }}>{chatStats.stats.avg_messages_per_conversation}</p>
                     </div>
                   </div>
                   {Object.keys(chatStats.stats.tool_usage).length > 0 && (
@@ -443,7 +449,7 @@ data: {"type": "done"}`}</pre>
                           <div key={tool} className="flex items-center gap-2">
                             <span className="text-[10px] w-16 text-[var(--text-secondary)] truncate">{labels[tool] || tool}</span>
                             <div className="flex-1 h-1.5 bg-[var(--bg-secondary)] rounded-full overflow-hidden">
-                              <div className="h-full bg-[var(--accent)] rounded-full" style={{ width: `${pct}%` }} />
+                              <div className="h-full bg-[var(--accent)] rounded-full animate-progress-fill" style={{ width: `${pct}%` }} />
                             </div>
                             <span className="text-[10px] text-[var(--text-tertiary)] font-mono-brand w-8 text-right">{count as number}</span>
                           </div>
