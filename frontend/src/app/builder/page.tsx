@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState, useRef, DragEvent, MouseEvent } from 'react';
 import ReactFlow, { Background, Controls, MiniMap, ReactFlowInstance } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { useStore } from '@/store/agentStore';
+import { useStore, AGENT_TEMPLATES } from '@/store/agentStore';
 import { PromptNode } from '@/components/nodes/PromptNode';
 import { ToolNode } from '@/components/nodes/ToolNode';
 import { GuardrailNode } from '@/components/nodes/GuardrailNode';
@@ -13,15 +13,19 @@ import { ConditionNode } from '@/components/nodes/ConditionNode';
 import { ApiNode } from '@/components/nodes/ApiNode';
 import { MemoryNode } from '@/components/nodes/MemoryNode';
 import { NodeSidebar } from '@/components/NodeSidebar';
+import MockChatWidget from '@/components/MockChatWidget';
 
 export default function BuilderPage() {
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, getAgentConfig, addNode, removeNode } = useStore();
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, getAgentConfig, addNode, removeNode, loadTemplate } = useStore();
   const [isDeploying, setIsDeploying] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [generatedScript, setGeneratedScript] = useState('');
   const [agentName, setAgentName] = useState('');
   const [deployedAgentId, setDeployedAgentId] = useState('');
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
@@ -124,6 +128,8 @@ export default function BuilderPage() {
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(generatedScript);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -136,6 +142,13 @@ export default function BuilderPage() {
           </a>
           <div className="w-px h-5 bg-[var(--border)]"></div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowTemplates(true)}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" /></svg>
+              Templates
+            </button>
             <input
               type="text"
               value={agentName}
@@ -152,6 +165,17 @@ export default function BuilderPage() {
           >
             My Agents
           </a>
+          <button
+            onClick={() => setShowPreview(!showPreview)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+              showPreview
+                ? 'bg-[var(--accent-glow)] text-[var(--accent)] border border-[var(--accent)] border-opacity-40'
+                : 'border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+            Test Agent
+          </button>
           <button 
             onClick={handleDeploy}
             disabled={isDeploying}
@@ -223,6 +247,13 @@ export default function BuilderPage() {
             </div>
           )}
         </div>
+
+        {/* Preview Chat Panel */}
+        {showPreview && (
+          <div className="w-[380px] h-full border-l border-[var(--border)] bg-[var(--bg-primary)] animate-slide-in-right overflow-hidden">
+            <MockChatWidget inline />
+          </div>
+        )}
       </div>
 
       {/* Deploy Success Modal */}
@@ -259,9 +290,13 @@ export default function BuilderPage() {
                 </pre>
                 <button 
                   onClick={copyToClipboard}
-                  className="absolute top-3 right-3 bg-[var(--bg-elevated)] hover:bg-[var(--border-light)] text-[var(--text-secondary)] px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border border-[var(--border)]"
+                  className={`absolute top-3 right-3 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                    copied
+                      ? 'bg-[var(--accent-glow)] border-[var(--accent)] text-[var(--accent)]'
+                      : 'bg-[var(--bg-elevated)] hover:bg-[var(--border-light)] text-[var(--text-secondary)] border-[var(--border)]'
+                  }`}
                 >
-                  Copy
+                  {copied ? '✓ Copied!' : 'Copy'}
                 </button>
               </div>
               <div className="mt-6 flex gap-3 justify-end">
@@ -278,6 +313,43 @@ export default function BuilderPage() {
                   Continue Editing
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Templates Modal */}
+      {showTemplates && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4" onClick={() => setShowTemplates(false)}>
+          <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-fade-in-up" onClick={e => e.stopPropagation()}>
+            <div className="border-b border-[var(--border)] px-6 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Agent Templates</h2>
+                <p className="text-xs text-[var(--text-tertiary)] mt-0.5">Виберіть шаблон для швидкого старту</p>
+              </div>
+              <button onClick={() => setShowTemplates(false)} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors">✕</button>
+            </div>
+            <div className="p-6 grid grid-cols-2 gap-4">
+              {AGENT_TEMPLATES.map((tpl) => (
+                <button
+                  key={tpl.id}
+                  onClick={() => { loadTemplate(tpl.id); setShowTemplates(false); setAgentName(tpl.name); }}
+                  className="group text-left p-5 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] hover:border-[var(--accent)]/50 hover:shadow-[0_8px_30px_var(--accent-glow)] hover:-translate-y-0.5 transition-all duration-300"
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style={{ background: `color-mix(in srgb, ${tpl.color} 15%, transparent)` }}>
+                      {tpl.icon}
+                    </div>
+                    <h3 className="font-semibold text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors">{tpl.name}</h3>
+                  </div>
+                  <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{tpl.description}</p>
+                  <div className="mt-3 flex items-center gap-1.5 text-[10px] text-[var(--text-tertiary)] font-mono-brand">
+                    <span>{tpl.nodes.length} nodes</span>
+                    <span>·</span>
+                    <span>{tpl.edges.length} connections</span>
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
         </div>

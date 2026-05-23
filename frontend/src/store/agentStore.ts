@@ -185,7 +185,95 @@ type RFState = {
   removeNode: (nodeId: string) => void;
   getAgentConfig: () => AgentConfig;
   getWorkflowConfig: () => WorkflowConfig;
+  loadTemplate: (templateId: string) => void;
 };
+
+// ─── AGENT TEMPLATES ───
+
+export type AgentTemplate = {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  color: string;
+  nodes: Node[];
+  edges: Edge[];
+};
+
+export const AGENT_TEMPLATES: AgentTemplate[] = [
+  {
+    id: 'market_researcher',
+    name: 'Market Researcher',
+    icon: '📊',
+    description: 'Аналіз конкурентів та ринку з пошуком в інтернеті',
+    color: 'var(--accent)',
+    nodes: [
+      { id: 'tpl-prompt-1', type: 'prompt', position: { x: 250, y: 40 }, data: { system_prompt: 'Ви — експерт з конкурентної розвідки. Шукайте інформацію в інтернеті, аналізуйте конкурентів і складайте структуровані звіти з таблицями та висновками.' } },
+      { id: 'tpl-tool-1', type: 'tool', position: { x: 50, y: 220 }, data: { tool_id: 'web_search', tool_name: 'Web Search', tool_description: 'Tavily API', tool_icon: '🔍', enabled: true } },
+      { id: 'tpl-guard-1', type: 'guardrail', position: { x: 300, y: 220 }, data: { max_iterations: 5 } },
+      { id: 'tpl-output-1', type: 'output_format', position: { x: 550, y: 220 }, data: { format: 'markdown', schema: '' } },
+    ],
+    edges: [
+      { id: 'tpl-e1', source: 'tpl-prompt-1', target: 'tpl-tool-1' },
+      { id: 'tpl-e2', source: 'tpl-prompt-1', target: 'tpl-guard-1' },
+      { id: 'tpl-e3', source: 'tpl-prompt-1', target: 'tpl-output-1' },
+    ],
+  },
+  {
+    id: 'math_tutor',
+    name: 'Math Tutor',
+    icon: '🧮',
+    description: 'Математичний репетитор з калькулятором та поясненнями',
+    color: 'var(--node-guardrail)',
+    nodes: [
+      { id: 'tpl-prompt-1', type: 'prompt', position: { x: 250, y: 40 }, data: { system_prompt: 'Ви — терплячий математичний репетитор. Пояснюйте рішення крок за кроком. Використовуйте калькулятор для точних обчислень. Відповідайте зрозуміло для учня.' } },
+      { id: 'tpl-tool-1', type: 'tool', position: { x: 100, y: 220 }, data: { tool_id: 'calculator', tool_name: 'Calculator', tool_description: 'Math engine', tool_icon: '🧮', enabled: true } },
+      { id: 'tpl-tool-2', type: 'tool', position: { x: 400, y: 220 }, data: { tool_id: 'web_search', tool_name: 'Web Search', tool_description: 'Tavily API', tool_icon: '🔍', enabled: true } },
+      { id: 'tpl-guard-1', type: 'guardrail', position: { x: 250, y: 380 }, data: { max_iterations: 8 } },
+    ],
+    edges: [
+      { id: 'tpl-e1', source: 'tpl-prompt-1', target: 'tpl-tool-1' },
+      { id: 'tpl-e2', source: 'tpl-prompt-1', target: 'tpl-tool-2' },
+      { id: 'tpl-e3', source: 'tpl-prompt-1', target: 'tpl-guard-1' },
+    ],
+  },
+  {
+    id: 'api_monitor',
+    name: 'API Monitor',
+    icon: '🔌',
+    description: 'Моніторинг зовнішнього API з умовною логікою',
+    color: 'var(--node-api)',
+    nodes: [
+      { id: 'tpl-prompt-1', type: 'prompt', position: { x: 250, y: 40 }, data: { system_prompt: 'Ви — системний монітор. Перевіряйте API endpoint та аналізуйте відповідь. Якщо є помилки — опишіть їх. Якщо все добре — підтвердіть статус.' } },
+      { id: 'tpl-api-1', type: 'api', position: { x: 50, y: 220 }, data: { method: 'GET', url: 'https://jsonplaceholder.typicode.com/posts/1', headers: '', body: '' } },
+      { id: 'tpl-cond-1', type: 'condition', position: { x: 350, y: 220 }, data: { expression: 'status code is 200', true_label: 'OK', false_label: 'Error' } },
+      { id: 'tpl-output-1', type: 'output_format', position: { x: 550, y: 220 }, data: { format: 'json', schema: '' } },
+    ],
+    edges: [
+      { id: 'tpl-e1', source: 'tpl-prompt-1', target: 'tpl-api-1' },
+      { id: 'tpl-e2', source: 'tpl-prompt-1', target: 'tpl-cond-1' },
+      { id: 'tpl-e3', source: 'tpl-prompt-1', target: 'tpl-output-1' },
+    ],
+  },
+  {
+    id: 'knowledge_bot',
+    name: 'Knowledge Bot',
+    icon: '📚',
+    description: 'Бот з базою знань та пам\'яттю сесії',
+    color: 'var(--node-knowledge)',
+    nodes: [
+      { id: 'tpl-prompt-1', type: 'prompt', position: { x: 250, y: 40 }, data: { system_prompt: 'Ви — розумний асистент з базою знань. Використовуйте надану інформацію для відповідей. Запам\'ятовуйте контекст розмови та відповідайте послідовно.' } },
+      { id: 'tpl-know-1', type: 'knowledge', position: { x: 50, y: 220 }, data: { source_type: 'url', source_value: 'https://en.wikipedia.org/wiki/Artificial_intelligence', chunk_size: 500 } },
+      { id: 'tpl-mem-1', type: 'memory', position: { x: 350, y: 220 }, data: { memory_type: 'session', ttl_minutes: 60 } },
+      { id: 'tpl-tool-1', type: 'tool', position: { x: 600, y: 220 }, data: { tool_id: 'web_search', tool_name: 'Web Search', tool_description: 'Tavily API', tool_icon: '🔍', enabled: true } },
+    ],
+    edges: [
+      { id: 'tpl-e1', source: 'tpl-prompt-1', target: 'tpl-know-1' },
+      { id: 'tpl-e2', source: 'tpl-prompt-1', target: 'tpl-mem-1' },
+      { id: 'tpl-e3', source: 'tpl-prompt-1', target: 'tpl-tool-1' },
+    ],
+  },
+];
 
 let nodeIdCounter = 10;
 
@@ -282,6 +370,16 @@ export const useStore = create<RFState>((set, get) => ({
     set({
       nodes: get().nodes.filter((n) => n.id !== nodeId),
       edges: get().edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
+    });
+  },
+
+  loadTemplate: (templateId: string) => {
+    const template = AGENT_TEMPLATES.find((t) => t.id === templateId);
+    if (!template) return;
+    nodeIdCounter = 100; // Reset counter to avoid collisions
+    set({
+      nodes: template.nodes.map((n) => ({ ...n })),
+      edges: template.edges.map((e) => ({ ...e })),
     });
   },
 

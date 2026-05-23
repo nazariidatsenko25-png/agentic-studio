@@ -20,6 +20,11 @@ export default function AgentsPage() {
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [embedTab, setEmbedTab] = useState<'widget' | 'api'>('widget');
+  const [embedCopied, setEmbedCopied] = useState(false);
+  const [chatShowStats, setChatShowStats] = useState(false);
+  const [chatStats, setChatStats] = useState<any>(null);
+  const [chatStatsLoading, setChatStatsLoading] = useState(false);
 
   const fetchAgents = async () => {
     try {
@@ -51,6 +56,41 @@ export default function AgentsPage() {
 
   const getEmbedCode = (id: string) => {
     return `<script src="http://localhost:3000/embed.js" data-agent="${id}" defer></script>`;
+  };
+
+  const getApiCurl = (id: string) => {
+    return `curl -X POST http://127.0.0.1:8000/api/chat/stream \\
+  -H "Content-Type: application/json" \\
+  -d '{"agent_id": "${id}", "message": "Hello!"}' \\
+  --no-buffer`;
+  };
+
+  const handleEmbedCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setEmbedCopied(true);
+    setTimeout(() => setEmbedCopied(false), 2000);
+  };
+
+  const fetchChatStats = async (agentId: string) => {
+    setChatStatsLoading(true);
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/agents/${agentId}/stats`);
+      if (res.ok) {
+        const data = await res.json();
+        setChatStats(data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch stats:', e);
+    } finally {
+      setChatStatsLoading(false);
+    }
+  };
+
+  const toggleChatStats = () => {
+    if (!chatShowStats && chatAgentId && !chatStats) {
+      fetchChatStats(chatAgentId);
+    }
+    setChatShowStats(!chatShowStats);
   };
 
   const handleChat = async (e: React.FormEvent) => {
@@ -206,6 +246,12 @@ export default function AgentsPage() {
                     >
                       Chat
                     </button>
+                    <a
+                      href={`/agents/${agent.id}`}
+                      className="px-3 py-1.5 border border-[var(--border)] text-[var(--text-secondary)] rounded-lg text-xs font-medium hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
+                    >
+                      📊 Stats
+                    </a>
                     <button
                       onClick={() => setEmbedModal(agent.id)}
                       className="px-3 py-1.5 border border-[var(--border)] text-[var(--text-secondary)] rounded-lg text-xs font-medium hover:border-[var(--text-tertiary)] transition-colors"
@@ -226,25 +272,79 @@ export default function AgentsPage() {
         )}
       </div>
 
-      {/* Embed Modal */}
+      {/* Embed & API Modal */}
       {embedModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4" onClick={() => setEmbedModal(null)}>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4" onClick={() => { setEmbedModal(null); setEmbedTab('widget'); setEmbedCopied(false); }}>
           <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl w-full max-w-lg overflow-hidden animate-fade-in-up" onClick={e => e.stopPropagation()}>
             <div className="border-b border-[var(--border)] px-5 py-3 flex items-center justify-between">
-              <h2 className="font-semibold text-sm">Embed Code</h2>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => { setEmbedTab('widget'); setEmbedCopied(false); }}
+                  className={`text-sm font-semibold pb-0.5 transition-colors ${
+                    embedTab === 'widget' ? 'text-[var(--accent)] border-b-2 border-[var(--accent)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
+                  }`}
+                >
+                  Widget
+                </button>
+                <button
+                  onClick={() => { setEmbedTab('api'); setEmbedCopied(false); }}
+                  className={`text-sm font-semibold pb-0.5 transition-colors ${
+                    embedTab === 'api' ? 'text-[var(--accent)] border-b-2 border-[var(--accent)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
+                  }`}
+                >
+                  REST API
+                </button>
+              </div>
               <button onClick={() => setEmbedModal(null)} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">✕</button>
             </div>
             <div className="p-5">
-              <p className="text-xs text-[var(--text-secondary)] mb-3">Вставте цей код перед <code className="text-[var(--accent)] font-mono-brand">&lt;/body&gt;</code>:</p>
-              <pre className="bg-[var(--bg-primary)] border border-[var(--border)] text-[var(--accent)] p-3 rounded-lg font-mono-brand text-xs overflow-x-auto">
-                {getEmbedCode(embedModal)}
-              </pre>
-              <button
-                onClick={() => { navigator.clipboard.writeText(getEmbedCode(embedModal)); }}
-                className="mt-3 px-4 py-2 bg-[var(--accent)] text-[var(--text-inverse)] rounded-lg text-xs font-semibold w-full hover:brightness-110 transition-all"
-              >
-                Copy to Clipboard
-              </button>
+              {embedTab === 'widget' ? (
+                <>
+                  <p className="text-xs text-[var(--text-secondary)] mb-3">Вставте цей код перед <code className="text-[var(--accent)] font-mono-brand">&lt;/body&gt;</code>:</p>
+                  <pre className="bg-[var(--bg-primary)] border border-[var(--border)] text-[var(--accent)] p-3 rounded-lg font-mono-brand text-xs overflow-x-auto">
+                    {getEmbedCode(embedModal)}
+                  </pre>
+                  <button
+                    onClick={() => handleEmbedCopy(getEmbedCode(embedModal))}
+                    className={`mt-3 px-4 py-2 rounded-lg text-xs font-semibold w-full transition-all ${
+                      embedCopied
+                        ? 'bg-[var(--accent-glow)] text-[var(--accent)] border border-[var(--accent)]'
+                        : 'bg-[var(--accent)] text-[var(--text-inverse)] hover:brightness-110'
+                    }`}
+                  >
+                    {embedCopied ? '✓ Copied!' : 'Copy to Clipboard'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-[var(--text-secondary)] mb-3">Використовуйте REST API для інтеграції з будь-яким додатком:</p>
+                  <div className="mb-3">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="text-[10px] font-mono-brand px-1.5 py-0.5 rounded bg-[var(--success)] text-[var(--text-inverse)] font-bold">POST</span>
+                      <span className="text-xs font-mono-brand text-[var(--text-secondary)]">/api/chat/stream</span>
+                    </div>
+                  </div>
+                  <pre className="bg-[var(--bg-primary)] border border-[var(--border)] text-[var(--text-secondary)] p-3 rounded-lg font-mono-brand text-[11px] overflow-x-auto leading-relaxed whitespace-pre-wrap">{getApiCurl(embedModal)}</pre>
+                  <div className="mt-3 p-3 bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg">
+                    <p className="text-[10px] text-[var(--text-tertiary)] font-mono-brand uppercase tracking-wider mb-1.5">Response: SSE Stream</p>
+                    <pre className="text-[11px] font-mono-brand text-[var(--text-secondary)] leading-relaxed">{`data: {"type": "thought", "content": "..."}
+data: {"type": "action", "tool": "web_search", ...}
+data: {"type": "observation", "content": "..."}
+data: {"type": "message", "content": "Final answer"}
+data: {"type": "done"}`}</pre>
+                  </div>
+                  <button
+                    onClick={() => handleEmbedCopy(getApiCurl(embedModal))}
+                    className={`mt-3 px-4 py-2 rounded-lg text-xs font-semibold w-full transition-all ${
+                      embedCopied
+                        ? 'bg-[var(--accent-glow)] text-[var(--accent)] border border-[var(--accent)]'
+                        : 'bg-[var(--accent)] text-[var(--text-inverse)] hover:brightness-110'
+                    }`}
+                  >
+                    {embedCopied ? '✓ Copied!' : 'Copy curl command'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -286,8 +386,77 @@ export default function AgentsPage() {
               <span className="text-sm font-semibold">Agent Chat</span>
               <span className="text-[10px] font-mono-brand text-[var(--text-tertiary)]">{chatAgentId.slice(0, 8)}</span>
             </div>
-            <button onClick={() => setChatAgentId(null)} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors">✕</button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleChatStats}
+                className={`w-7 h-7 rounded-md flex items-center justify-center transition-all text-xs ${
+                  chatShowStats
+                    ? 'bg-[var(--accent-glow)] text-[var(--accent)]'
+                    : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
+                }`}
+                title="Agent Stats"
+              >
+                📊
+              </button>
+              <a
+                href={`/agents/${chatAgentId}`}
+                className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors text-xs"
+                title="Full Dashboard"
+              >
+                ↗
+              </a>
+              <button onClick={() => { setChatAgentId(null); setChatShowStats(false); setChatStats(null); }} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors">✕</button>
+            </div>
           </div>
+
+          {/* Inline Stats Panel */}
+          {chatShowStats && (
+            <div className="border-b border-[var(--border)] bg-[var(--bg-primary)] animate-fade-in">
+              {chatStatsLoading ? (
+                <div className="flex items-center justify-center py-4">
+                  <div className="w-4 h-4 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : chatStats ? (
+                <div className="px-4 py-3">
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    <div className="bg-[var(--bg-secondary)] rounded-lg p-2.5 border border-[var(--border)]">
+                      <p className="text-[10px] text-[var(--text-tertiary)] font-mono-brand uppercase">Розмови</p>
+                      <p className="text-lg font-bold text-[var(--text-primary)]">{chatStats.stats.total_conversations}</p>
+                    </div>
+                    <div className="bg-[var(--bg-secondary)] rounded-lg p-2.5 border border-[var(--border)]">
+                      <p className="text-[10px] text-[var(--text-tertiary)] font-mono-brand uppercase">Повідом.</p>
+                      <p className="text-lg font-bold text-[var(--text-primary)]">{chatStats.stats.total_messages}</p>
+                    </div>
+                    <div className="bg-[var(--bg-secondary)] rounded-lg p-2.5 border border-[var(--border)]">
+                      <p className="text-[10px] text-[var(--text-tertiary)] font-mono-brand uppercase">Серед.</p>
+                      <p className="text-lg font-bold text-[var(--text-primary)]">{chatStats.stats.avg_messages_per_conversation}</p>
+                    </div>
+                  </div>
+                  {Object.keys(chatStats.stats.tool_usage).length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] text-[var(--text-tertiary)] font-mono-brand uppercase">Інструменти</p>
+                      {Object.entries(chatStats.stats.tool_usage).map(([tool, count]) => {
+                        const total = Object.values(chatStats.stats.tool_usage as Record<string, number>).reduce((a: number, b: number) => a + b, 0);
+                        const pct = Math.round(((count as number) / total) * 100);
+                        const labels: Record<string, string> = { web_search: '🔍 Search', calculator: '🧮 Calc', call_api: '🔌 API' };
+                        return (
+                          <div key={tool} className="flex items-center gap-2">
+                            <span className="text-[10px] w-16 text-[var(--text-secondary)] truncate">{labels[tool] || tool}</span>
+                            <div className="flex-1 h-1.5 bg-[var(--bg-secondary)] rounded-full overflow-hidden">
+                              <div className="h-full bg-[var(--accent)] rounded-full" style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="text-[10px] text-[var(--text-tertiary)] font-mono-brand w-8 text-right">{count as number}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-[var(--text-tertiary)] text-center py-3">Немає даних</p>
+              )}
+            </div>
+          )}
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 scrollbar-thin">

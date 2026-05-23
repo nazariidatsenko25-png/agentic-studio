@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import time
 import asyncio
 from google import genai
 from google.genai import types
@@ -288,8 +289,18 @@ async def execute_agent(
 
     messages = [history_prefix + user_message if history_prefix else user_message]
     
+    total_start = time.time()
+    
     for i in range(max_iterations):
-        yield f"data: {json.dumps({'type': 'status', 'content': f'Крок {i+1}/{max_iterations} — модель аналізує...'})}\n\n"
+        iter_start = time.time()
+        elapsed_total = time.time() - total_start
+        
+        # Emit iteration start
+        yield f"data: {json.dumps({'type': 'iter_start', 'iteration': i + 1, 'max': max_iterations, 'elapsed': round(elapsed_total, 1)})}\n\n"
+        
+        # Phase: Thinking
+        yield f"data: {json.dumps({'type': 'phase', 'phase': 'thinking', 'iteration': i + 1})}\n\n"
+        yield f"data: {json.dumps({'type': 'status', 'content': f'Крок {i+1}/{max_iterations} — модель аналізує... ({elapsed_total:.1f}s)'})}\n\n"
         
         message_to_send = messages.pop() if messages else ""
         
@@ -316,7 +327,10 @@ async def execute_agent(
                 tool_name = function_call.name
                 tool_args = function_call.args
                 
+                # Phase: Acting
+                yield f"data: {json.dumps({'type': 'phase', 'phase': 'acting', 'iteration': i + 1, 'tool': tool_name})}\n\n"
                 yield f"data: {json.dumps({'type': 'action', 'tool': tool_name, 'args': tool_args})}\n\n"
+                tool_start = time.time()
                 yield f"data: {json.dumps({'type': 'status', 'content': f'Виконую {tool_name}...'})}\n\n"
                 
                 # Execute tool
@@ -329,9 +343,12 @@ async def execute_agent(
                 else:
                     result = f"Unknown tool: {tool_name}"
                     
-                # Shorten observation for UI
+                # Phase: Observing
+                tool_elapsed = time.time() - tool_start
+                yield f"data: {json.dumps({'type': 'phase', 'phase': 'observing', 'iteration': i + 1, 'tool': tool_name, 'elapsed': round(tool_elapsed, 1)})}\n\n"
                 obs_preview = str(result)[:500] + "..." if len(str(result)) > 500 else str(result)
                 yield f"data: {json.dumps({'type': 'observation', 'content': obs_preview})}\n\n"
+                yield f"data: {json.dumps({'type': 'status', 'content': f'✓ {tool_name} завершено за {tool_elapsed:.1f}s'})}\n\n"
                 
                 # Send tool result back to model
                 messages.append(
@@ -340,6 +357,10 @@ async def execute_agent(
                         response={"result": result}
                     )
                 )
+            
+            # Emit iteration end
+            iter_elapsed = time.time() - iter_start
+            yield f"data: {json.dumps({'type': 'iter_end', 'iteration': i + 1, 'elapsed': round(iter_elapsed, 1)})}\n\n"
             continue  # Next iteration to process tool results
             
         # --- Process text response ---
@@ -351,11 +372,18 @@ async def execute_agent(
                 if thought:
                     yield f"data: {json.dumps({'type': 'thought', 'content': thought})}\n\n"
             
+            # Phase: Responding
+            yield f"data: {json.dumps({'type': 'phase', 'phase': 'responding', 'iteration': i + 1})}\n\n"
+            
             # Emit the final message (text without THINK: blocks)
             final_text = remaining if remaining else response.text
             if final_text.strip():
+                total_elapsed = time.time() - total_start
                 yield f"data: {json.dumps({'type': 'message', 'content': final_text})}\n\n"
+                yield f"data: {json.dumps({'type': 'iter_end', 'iteration': i + 1, 'elapsed': round(time.time() - iter_start, 1), 'final': True})}\n\n"
+                yield f"data: {json.dumps({'type': 'status', 'content': f'✓ Завершено за {total_elapsed:.1f}s ({i+1} кроків)'})}\n\n"
             break  # Done
             
     else:
-        yield f"data: {json.dumps({'type': 'message', 'content': 'Досягнуто ліміт ітерацій. Спробуйте збільшити максимальну кількість кроків.'})}\n\n"
+        total_elapsed = time.time() - total_start
+        yield f"data: {json.dumps({'type': 'message', 'content': f'Досягнуто ліміт ітерацій ({total_elapsed:.1f}s). Спробуйте збільшити максимальну кількість кроків.'})}\n\n"

@@ -138,6 +138,85 @@ async def delete_agent(agent_id: str):
     return {"status": "deleted", "agent_id": agent_id}
 
 
+@app.get("/api/agents/{agent_id}/stats")
+async def agent_stats(agent_id: str):
+    """Get analytics for a specific agent: conversations, messages, tool usage."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase client not initialized")
+    
+    # Verify agent exists
+    agent_res = supabase.table("agents").select("*").eq("id", agent_id).execute()
+    if not agent_res.data:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    agent = agent_res.data[0]
+    
+    # Get sessions for this agent
+    sessions_res = supabase.table("sessions").select("*").eq("agent_id", agent_id).execute()
+    sessions = sessions_res.data or []
+    total_sessions = len(sessions)
+    
+    # Get all messages across all sessions
+    total_messages = 0
+    tool_usage: dict = {}
+    recent_conversations = []
+    
+    for session in sessions:
+        msgs_res = supabase.table("messages").select("*").eq("session_id", session["id"]).execute()
+        msgs = msgs_res.data or []
+        total_messages += len(msgs)
+        
+        # Extract tool usage from assistant messages
+        for msg in msgs:
+            content = msg.get("content", "")
+            if msg.get("role") == "assistant":
+                # Count tool mentions in responses
+                for tool_name in ["web_search", "calculator", "call_api"]:
+                    if tool_name in content.lower():
+                        tool_usage[tool_name] = tool_usage.get(tool_name, 0) + 1
+        
+        # Build recent conversation preview
+        user_msgs = [m for m in msgs if m.get("role") == "user"]
+        assistant_msgs = [m for m in msgs if m.get("role") == "assistant"]
+        if user_msgs:
+            recent_conversations.append({
+                "session_id": session["id"],
+                "first_message": user_msgs[0].get("content", "")[:100],
+                "message_count": len(msgs),
+                "created_at": session.get("created_at", ""),
+            })
+    
+    # Sort recent conversations by date (newest first)
+    recent_conversations.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    
+    return {
+        "agent": {
+            "id": agent["id"],
+            "name": agent.get("name", "Unnamed"),
+            "system_prompt": agent.get("system_prompt", "")[:200],
+            "tools": agent.get("tools", []),
+        },
+        "stats": {
+            "total_conversations": total_sessions,
+            "total_messages": total_messages,
+            "avg_messages_per_conversation": round(total_messages / max(total_sessions, 1), 1),
+            "tool_usage": tool_usage,
+        },
+        "recent_conversations": recent_conversations[:10],
+    }
+
+
+@app.get("/api/sessions/{session_id}/messages")
+async def get_session_messages(session_id: str):
+    """Get all messages for a session (for conversation history)."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase client not initialized")
+    
+    msgs_res = supabase.table("messages").select("*").eq("session_id", session_id).order("created_at").execute()
+    
+    return {"messages": msgs_res.data or []}
+
+
 # ─── CHAT STREAMING ───
 
 async def sse_generator_wrapper(generator, session_id: Optional[str]):
